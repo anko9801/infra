@@ -1,0 +1,75 @@
+# k8s クラスターサービスへのルーティング
+# pochama (Traefik) → k8s NodePort 経由
+
+http:
+  routers:
+    # Home Assistant
+    home-assistant:
+      rule: "Host(`ha.{{env \"DOMAIN\"}}`)"
+      entryPoints:
+        - websecure
+      service: home-assistant
+      tls:
+        certResolver: letsencrypt
+
+    # Grafana
+    grafana:
+      rule: "Host(`grafana.{{env \"DOMAIN\"}}`)"
+      entryPoints:
+        - websecure
+      service: grafana
+      tls:
+        certResolver: letsencrypt
+
+    # Docmost
+    docmost:
+      rule: "Host(`docs.{{env \"DOMAIN\"}}`)"
+      entryPoints:
+        - websecure
+      service: docmost
+      tls:
+        certResolver: letsencrypt
+
+    # Shlink
+    shlink:
+      rule: "Host(`s.{{env \"DOMAIN\"}}`)"
+      entryPoints:
+        - websecure
+      service: shlink
+      tls:
+        certResolver: letsencrypt
+
+    # Registry
+    registry:
+      rule: "Host(`registry.{{env \"DOMAIN\"}}`)"
+      entryPoints:
+        - websecure
+      service: registry
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    home-assistant:
+      loadBalancer:
+        servers:
+          - url: "http://bracky:30123"  # NodePort
+
+    grafana:
+      loadBalancer:
+        servers:
+          - url: "http://metamon:30300"
+
+    docmost:
+      loadBalancer:
+        servers:
+          - url: "http://metamon:30301"
+
+    shlink:
+      loadBalancer:
+        servers:
+          - url: "http://bracky:30080"
+
+    registry:
+      loadBalancer:
+        servers:
+          - url: "http://metamon:30500"

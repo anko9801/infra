@@ -1,0 +1,65 @@
+---
+all:
+  children:
+    # Kubernetes クラスター
+    k8s_cluster:
+      children:
+        k8s_control_plane:
+          hosts:
+            pikachu:
+              ansible_host: 140.238.55.181
+              private_ip: 10.0.0.93
+              node_labels:
+                - "node-role.kubernetes.io/control-plane="
+        k8s_workers:
+          hosts:
+            metamon:
+              ansible_host: 150.230.108.22
+              private_ip: 10.0.0.15
+              node_labels:
+                - "role=devops"
+                - "workload=monitoring"
+            bracky:
+              ansible_host: 168.138.210.152
+              private_ip: 10.0.0.232
+              node_labels:
+                - "role=apps"
+                - "workload=applications"
+
+    # k8s 外 (Docker Compose)
+    infra:
+      hosts:
+        pochama:
+          ansible_host: 193.123.167.108
+          private_ip: 10.0.0.10
+          node_role: infra
+
+    # 全 OCI ノード
+    oci:
+      children:
+        k8s_cluster:
+        infra:
+
+    # 自宅 GPU サーバー
+    home:
+      hosts:
+        gpu-server:
+          ansible_host: # Tailscale IP
+          ansible_user: # ユーザー名
+
+  vars:
+    ansible_user: ubuntu
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+
+    # Kubernetes settings
+    k8s_version: "1.31"
+    k8s_pod_network_cidr: "10.244.0.0/16"
+    k8s_service_cidr: "10.96.0.0/12"
+
+    # NFS settings (pochama)
+    nfs_server: 10.0.0.10
+    nfs_export_path: /srv/nfs/k8s
+
+    # Tailscale (set via environment or vault)
+    # tailscale_authkey: tskey-auth-xxx

@@ -1,0 +1,92 @@
+---
+- name: Tailscale setup (all nodes)
+  hosts: oci
+  become: true
+
+  vars:
+    tailscale_authkey: "{{ lookup('env', 'TAILSCALE_AUTHKEY') | default(tailscale_authkey, true) }}"
+
+  tasks:
+    - name: Check if Tailscale is installed
+      command: which tailscale
+      register: tailscale_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Install Tailscale
+      when: tailscale_installed.rc != 0
+      block:
+        - name: Add Tailscale GPG key
+          shell: |
+            curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
+          args:
+            creates: /usr/share/keyrings/tailscale-archive-keyring.gpg
+
+        - name: Add Tailscale repository
+          apt_repository:
+            repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main"
+            state: present
+            filename: tailscale
+
+        - name: Install Tailscale package
+          apt:
+            name: tailscale
+            state: present
+            update_cache: yes
+
+    - name: Enable and start Tailscale service
+      service:
+        name: tailscaled
+        state: started
+        enabled: yes
+
+    - name: Check Tailscale status
+      command: tailscale status
+      register: ts_status
+      changed_when: false
+      failed_when: false
+
+    - name: Authenticate Tailscale (if not connected)
+      command: >
+        tailscale up
+        --authkey={{ tailscale_authkey }}
+        --hostname={{ inventory_hostname }}
+        --accept-routes
+        --accept-dns=false
+      when:
+        - ts_status.rc != 0 or 'Logged out' in ts_status.stdout
+        - tailscale_authkey | length > 0
+      no_log: true
+
+    - name: Get Tailscale IP
+      command: tailscale ip -4
+      register: tailscale_ip
+      changed_when: false
+      failed_when: false
+
+    - name: Display Tailscale IP
+      debug:
+        msg: "{{ inventory_hostname }}: {{ tailscale_ip.stdout }}"
+      when: tailscale_ip.rc == 0
+
+- name: Tailscale additional config (pochama - exit node)
+  hosts: infra
+  become: true
+
+  tasks:
+    - name: Enable IP forwarding for exit node
+      sysctl:
+        name: "{{ item }}"
+        value: '1'
+        sysctl_file: /etc/sysctl.d/99-tailscale.conf
+        reload: yes
+      loop:
+        - net.ipv4.ip_forward
+        - net.ipv6.conf.all.forwarding
+
+    - name: Advertise as exit node and subnet router
+      command: >
+        tailscale set
+        --advertise-exit-node
+        --advertise-routes=10.0.0.0/16
+      changed_when: false

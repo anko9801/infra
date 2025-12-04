@@ -1,0 +1,114 @@
+---
+- name: NFS Server setup (pochama)
+  hosts: infra
+  become: true
+
+  vars:
+    nfs_exports:
+      - path: /srv/nfs/k8s
+        options: "10.0.0.0/16(rw,sync,no_subtree_check,no_root_squash)"
+      - path: /srv/nfs/nextcloud
+        options: "127.0.0.1(rw,sync,no_subtree_check,no_root_squash)"
+
+    nfs_k8s_dirs:
+      - prometheus
+      - grafana
+      - loki
+      - home-assistant
+      - postgresql
+      - redis
+      - docmost
+      - registry
+
+  tasks:
+    - name: Install NFS server packages
+      apt:
+        name:
+          - nfs-kernel-server
+          - nfs-common
+        state: present
+        update_cache: yes
+
+    - name: Create NFS export directories
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: '0755'
+        owner: nobody
+        group: nogroup
+      loop: "{{ nfs_exports }}"
+
+    - name: Create k8s PV directories
+      file:
+        path: "/srv/nfs/k8s/{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: nobody
+        group: nogroup
+      loop: "{{ nfs_k8s_dirs }}"
+
+    - name: Configure NFS exports
+      template:
+        src: ../templates/exports.j2
+        dest: /etc/exports
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart NFS
+
+    - name: Allow NFS through UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+        src: 10.0.0.0/16
+      loop:
+        - '111'
+        - '2049'
+        - '20048'
+
+    - name: Allow NFS UDP through UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: udp
+        src: 10.0.0.0/16
+      loop:
+        - '111'
+        - '2049'
+        - '20048'
+
+    - name: Enable and start NFS server
+      service:
+        name: nfs-kernel-server
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart NFS
+      service:
+        name: nfs-kernel-server
+        state: restarted
+
+- name: NFS Client setup (k8s nodes)
+  hosts: k8s_cluster
+  become: true
+
+  tasks:
+    - name: Install NFS client packages
+      apt:
+        name:
+          - nfs-common
+        state: present
+        update_cache: yes
+
+    - name: Test NFS mount
+      command: showmount -e {{ hostvars['pochama']['ansible_host'] }}
+      register: nfs_test
+      changed_when: false
+      failed_when: false
+
+    - name: Display NFS exports
+      debug:
+        var: nfs_test.stdout_lines
+      when: nfs_test.rc == 0

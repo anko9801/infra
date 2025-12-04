@@ -1,0 +1,145 @@
+---
+- name: Kubernetes cluster setup
+  hosts: k8s_cluster
+  become: true
+
+  vars:
+    k8s_version: "1.29"
+    containerd_version: "1.7"
+
+  tasks:
+    - name: Disable swap
+      command: swapoff -a
+      changed_when: false
+
+    - name: Remove swap from fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '\sswap\s'
+        state: absent
+
+    - name: Load kernel modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Persist kernel modules
+      copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Set sysctl parameters
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/k8s.conf
+        reload: yes
+      loop:
+        - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+        - { key: 'net.ipv4.ip_forward', value: '1' }
+
+    - name: Install containerd
+      apt:
+        name: containerd
+        state: present
+
+    - name: Configure containerd
+      shell: |
+        mkdir -p /etc/containerd
+        containerd config default > /etc/containerd/config.toml
+        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+      notify: Restart containerd
+
+    - name: Add Kubernetes apt key
+      apt_key:
+        url: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key
+        state: present
+
+    - name: Add Kubernetes repository
+      apt_repository:
+        repo: "deb https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /"
+        state: present
+
+    - name: Install Kubernetes packages
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: yes
+
+    - name: Hold Kubernetes packages
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    # UFW rules for Kubernetes
+    - name: Allow VCN internal traffic
+      ufw:
+        rule: allow
+        from_ip: 10.0.0.0/16
+
+    - name: Allow Flannel VXLAN
+      ufw:
+        rule: allow
+        port: '8472'
+        proto: udp
+
+    - name: Allow kubelet
+      ufw:
+        rule: allow
+        port: '10250'
+        proto: tcp
+
+    - name: Allow NodePort range
+      ufw:
+        rule: allow
+        port: 30000:32767
+        proto: tcp
+
+  handlers:
+    - name: Restart containerd
+      service:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+- name: Control Plane UFW rules
+  hosts: k8s_control_plane
+  become: true
+
+  tasks:
+    - name: Allow API Server
+      ufw:
+        rule: allow
+        port: '6443'
+        proto: tcp
+
+    - name: Allow etcd
+      ufw:
+        rule: allow
+        port: 2379:2380
+        proto: tcp
+
+    - name: Allow kube-scheduler
+      ufw:
+        rule: allow
+        port: '10251'
+        proto: tcp
+
+    - name: Allow kube-controller-manager
+      ufw:
+        rule: allow
+        port: '10252'
+        proto: tcp

@@ -1,0 +1,6 @@
+# /etc/exports - NFS export configuration
+# Managed by Ansible
+
+{% for export in nfs_exports %}
+{{ export.path }} {{ export.options }}
+{% endfor %}

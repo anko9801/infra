@@ -1,0 +1,62 @@
+---
+- name: Setup GitHub Deploy Key
+  hosts: k8s_control_plane
+  become: false
+
+  vars:
+    github_repo: "anko9801/infra"
+    deploy_key_path: "~/.ssh/github_deploy"
+
+  tasks:
+    - name: Check if deploy key already exists
+      stat:
+        path: "{{ deploy_key_path }}"
+      register: deploy_key
+
+    - name: Generate SSH deploy key
+      community.crypto.openssh_keypair:
+        path: "{{ deploy_key_path }}"
+        type: ed25519
+        comment: "{{ inventory_hostname }}-deploy"
+      when: not deploy_key.stat.exists
+      register: keypair
+
+    - name: Configure SSH for GitHub
+      blockinfile:
+        path: ~/.ssh/config
+        create: yes
+        mode: '0600'
+        block: |
+          Host github.com
+            HostName github.com
+            User git
+            IdentityFile {{ deploy_key_path }}
+            IdentitiesOnly yes
+
+    - name: Read public key
+      slurp:
+        src: "{{ deploy_key_path }}.pub"
+      register: pubkey
+
+    - name: Display public key
+      debug:
+        msg: |
+
+          ========================================
+          GitHub Deploy Key を設定してください
+          ========================================
+
+          1. GitHub リポジトリにアクセス:
+             https://github.com/{{ github_repo }}/settings/keys
+
+          2. "Add deploy key" をクリック
+
+          3. Title: {{ inventory_hostname }}-deploy
+
+          4. Key (以下をコピー):
+          {{ pubkey.content | b64decode }}
+          5. "Allow write access" は不要（読み取りのみ）
+
+          6. "Add key" をクリック
+
+          ========================================

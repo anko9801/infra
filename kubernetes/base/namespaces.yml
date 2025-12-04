@@ -1,0 +1,45 @@
+---
+# Apps namespace (bracky)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+  labels:
+    name: apps
+    node: bracky
+---
+# DevOps/Monitoring namespace (metamon)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops
+  labels:
+    name: devops
+    node: metamon
+---
+# Monitoring namespace (metamon)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    node: metamon
+---
+# Registry namespace (metamon)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+  labels:
+    name: registry
+    node: metamon
+---
+# Database namespace (bracky)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database
+  labels:
+    name: database
+    node: bracky

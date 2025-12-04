@@ -1,0 +1,21 @@
+---
+# NFS StorageClass (pochama NFS server)
+# Requires NFS CSI Driver to be installed first
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-client
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: nfs.csi.k8s.io
+parameters:
+  # Use Tailscale IP or private IP of pochama
+  server: "${NFS_SERVER_IP}"  # Replace with actual IP
+  share: /srv/nfs/k8s
+  # subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+mountOptions:
+  - nfsvers=4.1
+  - hard
+  - nointr
