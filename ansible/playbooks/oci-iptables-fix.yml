@@ -1,0 +1,44 @@
+---
+- name: Fix OCI default iptables REJECT rules
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Check if OCI REJECT rule exists in iptables
+      shell: iptables -L INPUT -n --line-numbers | grep -n "REJECT.*icmp-host-prohibited"
+      register: reject_rule
+      changed_when: false
+      failed_when: false
+
+    - name: Display current iptables rules
+      debug:
+        msg: "{{ reject_rule.stdout_lines }}"
+      when: reject_rule.stdout != ""
+
+    - name: Remove OCI default REJECT rule from INPUT chain
+      shell: |
+        # Get the line number of the REJECT rule
+        LINE=$(iptables -L INPUT -n --line-numbers | grep "REJECT.*icmp-host-prohibited" | head -1 | awk '{print $1}')
+        if [ -n "$LINE" ]; then
+          iptables -D INPUT $LINE
+          echo "Removed REJECT rule from line $LINE"
+        else
+          echo "No REJECT rule found"
+        fi
+      register: remove_result
+      changed_when: "'Removed' in remove_result.stdout"
+
+    - name: Show result
+      debug:
+        msg: "{{ remove_result.stdout }}"
+
+    - name: Save iptables rules (Debian/Ubuntu)
+      shell: iptables-save > /etc/iptables/rules.v4
+      when: ansible_os_family == "Debian"
+      failed_when: false
+
+    - name: Ensure iptables-persistent is installed (for persistence)
+      apt:
+        name: iptables-persistent
+        state: present
+      when: ansible_os_family == "Debian"
